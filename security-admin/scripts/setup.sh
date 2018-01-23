@@ -291,21 +291,25 @@ check_java_version() {
 		log "[E] JAVA_HOME environment property not defined, aborting installation."
 		exit 1
 	fi
-
         export JAVA_BIN=${JAVA_HOME}/bin/java
 
 	if is_command ${JAVA_BIN} ; then
 		log "[I] '${JAVA_BIN}' command found"
 	else
-               log "[E] '${JAVA_BIN}' command not found"
-               exit 1;
+        log "[E] '${JAVA_BIN}' command not found"
+        exit 1;
 	fi
 
 	version=$("$JAVA_BIN" -version 2>&1 | awk -F '"' '/version/ {print $2}')
 	major=`echo ${version} | cut -d. -f1`
 	minor=`echo ${version} | cut -d. -f2`
-	if [[ "${major}" == 1 && "${minor}" < 7 ]] ; then
-		log "[E] Java 1.7 is required, current java version is $version"
+	current_java_version="$major.$minor"
+	num_current_java_version=`echo $current_java_version|awk ' { printf("%3.2f\n", $0); } '`
+	JAVA_VERSION_REQUIRED=`echo $JAVA_VERSION_REQUIRED | awk '{gsub(/ /,"")}1'`
+	JAVA_VERSION_REQUIRED=`echo $JAVA_VERSION_REQUIRED | awk '{gsub(/'"'"'/,"")}1'`
+	num_required_java_version=`echo $JAVA_VERSION_REQUIRED|awk ' { printf("%3.2f\n", $0); } '`
+	if [ `echo "$num_current_java_version < $num_required_java_version" | bc` -eq 1 ];then
+		log "[E] The java version must be greater than or equal to $JAVA_VERSION_REQUIRED, the current java version is $version"
 		exit 1;
 	fi
 }
@@ -1164,7 +1168,7 @@ do_authentication_setup(){
 }
 #=====================================================================
 setup_unix_user_group(){
-	log "[I] Setting up UNIX user : ${unix_user} and group: ${unix_group}";
+	log "[I] Setting up UNIX user : ${unix_user} and group: ${unix_group}"
 
 	#create group if it does not exist
 	egrep "^$unix_group" /etc/group >& /dev/null
@@ -1179,7 +1183,7 @@ setup_unix_user_group(){
 	if [ $? -ne 0 ]
 	then
 		check_user_pwd ${unix_user_pwd}
-	    log "[I] Creating new user and adding to group";
+	    log "[I] Creating new user and adding to group"
         useradd ${unix_user} -g ${unix_group} -m
 		check_ret_status $? "useradd ${unix_user} failed"
 
@@ -1193,10 +1197,17 @@ EOF
 		chpasswd <  ${passwdtmpfile}
 		rm -rf  ${passwdtmpfile}
 	else
-	    log "[I] User already exists, adding it to group";
-	    usermod -g ${unix_group} ${unix_user}
+	    useringroup=`id ${unix_user}`
+        useringrouparr=(${useringroup// / })
+	    if [[  ${useringrouparr[1]} =~ "(${unix_group})" ]]
+		then
+			log "[I] the ${unix_user} user already exists and belongs to group ${unix_group}"
+		else
+			log "[I] User already exists, adding it to group ${unix_group}"
+			usermod -g ${unix_group} ${unix_user}
+		fi
 	fi
-	log "[I] Setting up UNIX user : ${unix_user} and group: ${unix_group} DONE";
+	log "[I] Setting up UNIX user : ${unix_user} and group: ${unix_group} DONE"
 }
 
 setup_install_files(){

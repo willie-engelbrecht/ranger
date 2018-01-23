@@ -54,6 +54,10 @@ define(function(require){
 		bindEvents : function(){
 			this.on('userRoleList:change', function(form, fieldEditor){
 				//this.userRoleListChange(form, fieldEditor);
+				if(this.model.get('userSource') === XAEnums.UserTypes.USER_EXTERNAL.value){
+					var externalUserRoleProperty = "<b> Warning !!</b> :  Please make sure that <i>"+ this.model.get('name') + "</i> user's role change performed here is consistent with <i>ranger.usersync.group.based.role.assignment.rules</i> property in ranger usersync configuration.";
+					XAUtils.alertPopup({msg : externalUserRoleProperty});
+				}
     		});
 		},
 		
@@ -63,7 +67,7 @@ define(function(require){
 		schema :function(){
 			return{
 				name : {
-					type		: 'TextFiledWithIcon',
+					type		: 'TextFieldWithIcon',
 					title		: localization.tt("lbl.userName") +' *',
 					validators  : ['required',{type:'regexp',regexp:/^([A-Za-z0-9_]|[\u00C0-\u017F])([a-z0-9,._\-+/@= ]|[\u00C0-\u017F])+$/i, 
 						            message :' Invalid user name'}],
@@ -87,14 +91,14 @@ define(function(require){
 					errorMsg    : localization.tt('validationMessages.passwordError')
 				},
 				firstName : { 
-					type		: 'TextFiledWithIcon',
+					type		: 'TextFieldWithIcon',
 					title		: localization.tt("lbl.firstName")+' *',
                                         validators  : ['required',{type:'regexp',regexp:/^([A-Za-z0-9_]|[\u00C0-\u017F])([a-zA-Z0-9\s_. -@]|[\u00C0-\u017F])+$/i,
 						            message :' Invalid first name'}],
 					errorMsg    :localization.tt('validationMessages.firstNameValidationMsg'),
 				},
 				lastName : { 
-					type		: 'TextFiledWithIcon',
+					type		: 'TextFieldWithIcon',
 					title		: localization.tt("lbl.lastName"),
                                         validators  : [{type:'regexp',regexp:/^([A-Za-z0-9_]|[\u00C0-\u017F])([a-zA-Z0-9\s_. -@]|[\u00C0-\u017F])+$/i,
 						            message :' Invalid last name'}],

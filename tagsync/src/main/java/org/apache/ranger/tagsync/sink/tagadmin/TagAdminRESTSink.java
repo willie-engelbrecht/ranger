@@ -26,16 +26,16 @@ import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.security.SecureClientLogin;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.ranger.admin.client.datatype.RESTResponse;
 import org.apache.ranger.tagsync.model.TagSink;
 import org.apache.ranger.plugin.util.RangerRESTClient;
 import org.apache.ranger.plugin.util.SearchFilter;
 import org.apache.ranger.plugin.util.ServiceTags;
 import org.apache.ranger.tagsync.process.TagSyncConfig;
-import javax.security.auth.Subject;
 import javax.servlet.http.HttpServletResponse;
 
+import java.io.IOException;
 import java.security.PrivilegedAction;
 import java.util.Map;
 import java.util.Properties;
@@ -53,59 +53,55 @@ public class TagAdminRESTSink implements TagSink, Runnable {
 
 	private static final String REST_URL_IMPORT_SERVICETAGS_RESOURCE = REST_PREFIX + MODULE_PREFIX + "/importservicetags/";
 
-	private static final String AUTH_TYPE_KERBEROS = "kerberos";
-
 	private long rangerAdminConnectionCheckInterval;
 
 	private RangerRESTClient tagRESTClient = null;
 
+	private boolean isKerberized;
+
 	private BlockingQueue<UploadWorkItem> uploadWorkItems;
-	
-	private String authenticationType;	
-	private String principal;
-	private String keytab;
-	private String nameRules;
 
 	private Thread myThread = null;
 
 	@Override
 	public boolean initialize(Properties properties) {
-		if(LOG.isDebugEnabled()) {
+		if (LOG.isDebugEnabled()) {
 			LOG.debug("==> TagAdminRESTSink.initialize()");
 		}
 
 		boolean ret = false;
 
-		String restUrl       = TagSyncConfig.getTagAdminRESTUrl(properties);
+		String restUrl = TagSyncConfig.getTagAdminRESTUrl(properties);
 		String sslConfigFile = TagSyncConfig.getTagAdminRESTSslConfigFile(properties);
 		String userName = TagSyncConfig.getTagAdminUserName(properties);
 		String password = TagSyncConfig.getTagAdminPassword(properties);
 		rangerAdminConnectionCheckInterval = TagSyncConfig.getTagAdminConnectionCheckInterval(properties);
-		authenticationType = TagSyncConfig.getAuthenticationType(properties);
-		nameRules = TagSyncConfig.getNameRules(properties);
-		principal = TagSyncConfig.getKerberosPrincipal(properties);
-		keytab = TagSyncConfig.getKerberosKeytab(properties);
+		isKerberized = TagSyncConfig.getTagsyncKerberosIdentity(properties) != null;
+
 
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("restUrl=" + restUrl);
 			LOG.debug("sslConfigFile=" + sslConfigFile);
 			LOG.debug("userName=" + userName);
-			LOG.debug("rangerAdminConnectionCheckInterval" + rangerAdminConnectionCheckInterval);
+			LOG.debug("rangerAdminConnectionCheckInterval=" + rangerAdminConnectionCheckInterval);
+			LOG.debug("isKerberized=" + isKerberized);
 		}
 
 		if (StringUtils.isNotBlank(restUrl)) {
 			tagRESTClient = new RangerRESTClient(restUrl, sslConfigFile);
-			if(!(!StringUtils.isEmpty(authenticationType) && authenticationType.trim().equalsIgnoreCase(AUTH_TYPE_KERBEROS) && SecureClientLogin.isKerberosCredentialExists(principal, keytab))){
+			if (!isKerberized) {
 				tagRESTClient.setBasicAuthInfo(userName, password);
 			}
-			uploadWorkItems = new LinkedBlockingQueue<UploadWorkItem>();
+			// Build and cache REST client. This will catch any errors in building REST client up-front
+			tagRESTClient.getClient();
 
+			uploadWorkItems = new LinkedBlockingQueue<UploadWorkItem>();
 			ret = true;
 		} else {
 			LOG.error("No value specified for property 'ranger.tagsync.tagadmin.rest.url'!");
 		}
 
-		if(LOG.isDebugEnabled()) {
+		if (LOG.isDebugEnabled()) {
 			LOG.debug("<== TagAdminRESTSink.initialize(), result=" + ret);
 		}
 
@@ -134,25 +130,38 @@ public class TagAdminRESTSink implements TagSink, Runnable {
 	}
 
 	private ServiceTags doUpload(ServiceTags serviceTags) throws Exception {
-			if(!StringUtils.isEmpty(authenticationType) && authenticationType.trim().equalsIgnoreCase(AUTH_TYPE_KERBEROS) && SecureClientLogin.isKerberosCredentialExists(principal, keytab)){
+			if(isKerberized) {
 				try{
-					Subject sub = SecureClientLogin.loginUserFromKeytab(principal, keytab, nameRules);
-					if(LOG.isDebugEnabled()) {
-						LOG.debug("Using Principal = "+ principal + ", keytab = "+keytab);
-					}
-					final ServiceTags serviceTag = serviceTags;
-					ServiceTags ret = Subject.doAs(sub, new PrivilegedAction<ServiceTags>() {
-						@Override
-						public ServiceTags run() {
-							try{
-								return uploadServiceTags(serviceTag);
-							}catch (Exception e) {
-								LOG.error("Upload of service-tags failed with message ", e);
-						    }
-							return null;
+					UserGroupInformation userGroupInformation = UserGroupInformation.getLoginUser();
+					if (userGroupInformation != null) {
+						try {
+							userGroupInformation.checkTGTAndReloginFromKeytab();
+						} catch (IOException ioe) {
+							LOG.error("Error renewing TGT and relogin", ioe);
+							userGroupInformation = null;
 						}
-					});
-					return ret;
+					}
+					if (userGroupInformation != null) {
+						if (LOG.isDebugEnabled()) {
+							LOG.debug("Using Principal = " + userGroupInformation.getUserName());
+						}
+						final ServiceTags serviceTag = serviceTags;
+						ServiceTags ret = userGroupInformation.doAs(new PrivilegedAction<ServiceTags>() {
+							@Override
+							public ServiceTags run() {
+								try {
+									return uploadServiceTags(serviceTag);
+								} catch (Exception e) {
+									LOG.error("Upload of service-tags failed with message ", e);
+								}
+								return null;
+							}
+						});
+						return ret;
+					} else {
+						LOG.error("Failed to get UserGroupInformation.getLoginUser()");
+						return null; // This will cause retries !!!
+					}
 				}catch(Exception e){
 					LOG.error("Upload of service-tags failed with message ", e);
 				}

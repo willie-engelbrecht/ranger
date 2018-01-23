@@ -53,6 +53,7 @@ public class AtlasClient extends BaseClient {
 
 	private static final Logger LOG = Logger.getLogger(AtlasClient.class);
 	private static final String EXPECTED_MIME_TYPE = "application/json";
+	private static final String WEB_RESOURCE_CONTENT_TYPE = "application/x-www-form-urlencoded";
 	private static final String ATLAS_STATUS_API_ENDPOINT = "/j_spring_security_check";
 	/*** TYPE **/
 	private static final String ATLAS_LIST_TYPE_API_ENDPOINT = "/api/atlas/types/";
@@ -191,11 +192,11 @@ public class AtlasClient extends BaseClient {
 			}
 			formData.add("j_password", decryptedPwd);
 			try {
-				statusResponse = webResource.type("application/x-www-form-urlencoded").post(ClientResponse.class,
+				statusResponse = webResource.type(WEB_RESOURCE_CONTENT_TYPE).post(ClientResponse.class,
 						formData);
 			} catch (Exception e) {
-				String msgDesc = "Unable to get a valid statusResponse for " + "expected mime type : ["
-						+ EXPECTED_MIME_TYPE + "] URL : " + statusUrl + " - got null response.";
+				String msgDesc = "Unable to get a valid statusResponse for expected mime type : ["
+						+ WEB_RESOURCE_CONTENT_TYPE + "] URL : " + statusUrl + " - got null response.";
 				LOG.error(msgDesc);
 			}
 			if (LOG.isDebugEnabled()) {
@@ -257,9 +258,6 @@ public class AtlasClient extends BaseClient {
 			}
 			if (resultResponse != null) {
 				resultResponse.close();
-			}
-			if (client != null) {
-				client.destroy();
 			}
 		}
 		return lret;
@@ -325,9 +323,6 @@ public class AtlasClient extends BaseClient {
 			}
 			if (resultResponse != null) {
 				resultResponse.close();
-			}
-			if (client != null) {
-				client.destroy();
 			}
 		}
 		return lret;
@@ -614,8 +609,8 @@ public class AtlasClient extends BaseClient {
 		String errMsg = errMessage;
 		boolean connectivityStatus = false;
 		HashMap<String, Object> responseData = new HashMap<String, Object>();
-		AtlasClient AtlasClient = getAtlasClient(serviceName, configs);
-		List<String> strList = getAtlasResource(AtlasClient, "", "", null);
+		AtlasClient atlasClient = getAtlasClient(serviceName, configs);
+		List<String> strList = getAtlasResource(atlasClient, "", "", null);
 
 		if (strList != null && strList.size() > 0) {
 			if (LOG.isDebugEnabled()) {
@@ -635,7 +630,7 @@ public class AtlasClient extends BaseClient {
 	}
 
 	public static AtlasClient getAtlasClient(String serviceName, Map<String, String> configs) {
-		AtlasClient AtlasClient = null;
+		AtlasClient atlasClient = null;
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("Getting AtlasClient for datasource: " + serviceName);
 		}
@@ -647,9 +642,9 @@ public class AtlasClient extends BaseClient {
 			hdpException.generateResponseDataMap(false, msgDesc, msgDesc + errMsg, null, null);
 			throw hdpException;
 		} else {
-			AtlasClient = new AtlasClient(serviceName, configs);
+			atlasClient = new AtlasClient(serviceName, configs);
 		}
-		return AtlasClient;
+		return atlasClient;
 	}
 
 	public static List<String> getAtlasResource(final AtlasClient atlasClient, String atlasResourceName,

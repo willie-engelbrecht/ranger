@@ -24,11 +24,12 @@ import java.util.Map;
 import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyResource;
 import org.apache.ranger.plugin.model.RangerServiceDef;
+import org.apache.ranger.plugin.model.validation.RangerServiceDefHelper;
 import org.apache.ranger.plugin.policyengine.RangerAccessResource;
 import org.apache.ranger.plugin.resourcematcher.RangerResourceMatcher;
 
 public interface RangerPolicyResourceMatcher {
-	enum MatchScope { SELF_OR_ANCESTOR_OR_DESCENDANT, SELF, SELF_OR_DESCENDANT, SELF_OR_ANCESTOR, DESCENDANT, ANCESTOR };
+	enum MatchScope { SELF, SELF_OR_DESCENDANT, SELF_OR_ANCESTOR, DESCENDANT, ANCESTOR, ANY };
 	enum MatchType { NONE, SELF, DESCENDANT, ANCESTOR };
 
 	void setServiceDef(RangerServiceDef serviceDef);
@@ -36,6 +37,10 @@ public interface RangerPolicyResourceMatcher {
 	void setPolicy(RangerPolicy policy);
 
 	void setPolicyResources(Map<String, RangerPolicyResource> policyResources);
+
+	void setPolicyResources(Map<String, RangerPolicyResource> policyResources, int policyType);
+
+	void setServiceDefHelper(RangerServiceDefHelper serviceDefHelper);
 
 	void init();
 

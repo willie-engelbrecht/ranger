@@ -189,6 +189,11 @@
 		</query>
 	</named-query>
 
+	<named-query name="XXGroupUser.findByGroupNameAndUserId">
+		<query>SELECT obj FROM XXGroupUser obj WHERE obj.name=:groupName AND obj.userId=:userId
+		</query>
+	</named-query>
+
 	<named-query name="XXTrxLog.findByTrxId">
 		<query>SELECT obj FROM XXTrxLog obj WHERE obj.transactionId = :transactionId
 		</query>
@@ -1077,6 +1082,12 @@
 		<query>select obj from XXServiceResource obj where obj.serviceId = :serviceId and obj.id in
 					(select tagResMap.resourceId from XXTagResourceMap tagResMap)
 				order by obj.id
+		</query>
+	</named-query>
+
+	<named-query name="XXServiceResource.countTaggedResourcesInServiceId">
+		<query>select count(obj.id) from XXServiceResource obj where obj.serviceId = :serviceId and obj.id in
+			(select tagResMap.resourceId from XXTagResourceMap tagResMap)
 		</query>
 	</named-query>
 

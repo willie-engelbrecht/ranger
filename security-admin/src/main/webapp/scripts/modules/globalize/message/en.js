@@ -330,6 +330,25 @@ define(function(require) {
                 pluginStatus                :'Plugin Status',
                 clusterName                 :'Name of ambari cluster',
                 url        					:'Hive url.',
+                enabled                     :'enabled',
+                disabled                    :'disabled',
+                Url                         :'Url',
+                recursive                   :'recursive',
+                nonRecursive                :'non-recursive',
+                dataBase                    :'DataBase',
+                exclude                     :'exclude',
+                include                     :'include',
+                yes                         :'Yes',
+                no                          :'No',
+                conditions                  :'Conditions',
+                exAllowCondition            :'Exclude from Allow Conditions',
+                denyCondition               :'Deny Conditions',
+                exDenyCondition             :'Exclude from Deny Conditions',
+                maskingOption               :'Masking Option',
+                masking                     :'Masking',
+                custom                      :'CUSTOM',
+                mask                        :'Mask',
+                rowFilter                   :'Row Filter'
                         },
 			msg : {
 				deletePolicyValidationMsg : 'Policy does not have any settings for the specific resource. Policy will be deleted. Press [Ok] to continue. Press [Cancel] to edit the policy.',
@@ -396,7 +415,8 @@ define(function(require) {
                 plsSelectUserToSetVisibility :' Please select user to set visibility or selected user is already visible/hidden.',
                 plsSelectGroupToSetVisibility:' Please select group to set visibility or selected group is already visible/hidden.',
                 activationTimeDelayMsg       :'Policy activation time delayed by more than 1hr from last update time.',
-                pleaseSelectAccessTypeForTagMasking : 'Please select access type first to enable add masking options.'
+                pleaseSelectAccessTypeForTagMasking : 'Please select access type first to enable add masking options.',
+                addUserOrGroupForDelegateAdmin      : 'Please select user/group for the selected permission(s)',
  
 			},
 			plcHldr : {
@@ -445,7 +465,9 @@ define(function(require) {
 			},
 			hintMsg : {
 				yarnRestUrl            :"1.For one url, eg.<br>'http or https://&lt;ipaddr&gt;:8088'<br>2.For multiple urls (use , or ; delimiter), eg.<br>'http://&lt;ipaddr1&gt;:8088,http://&lt;ipaddr2&gt;:8088'",
-				hiveJDBCUrl            :"1.For Remote Mode, eg.<br>jdbc:hive2://&lt;host&gt;:&lt;port&gt;<br>2.For Embedded Mode (no host or port), eg.<br>jdbc:hive2:///;initFile=&lt;file&gt;<br>3.For HTTP Mode, eg.<br>jdbc:hive2://&lt;host&gt;:&lt;port&gt;/;<br>transportMode=http;httpPath=&lt;httpPath&gt;<br>4.For SSL Mode, eg.<br>jdbc:hive2://&lt;host&gt;:&lt;port&gt;/;ssl=true;<br>sslTrustStore=tStore;trustStorePassword=pw<br>5.For ZooKeeper Mode, eg.<br>jdbc:hive2://&lt;host&gt;/;serviceDiscoveryMode=<br>zooKeeper;zooKeeperNamespace=hiveserver2<br>6.For Kerberos Mode, eg.<br>jdbc:hive2://&lt;host&gt;:&lt;port&gt;/;<br>principal=hive/domain@EXAMPLE.COM<br>"
+				sqoopRestUrl           :"eg. 'http://&lt;ipaddr&gt;:12000'",
+				hiveJDBCUrl            :"1.For Remote Mode, eg.<br>jdbc:hive2://&lt;host&gt;:&lt;port&gt;<br>2.For Embedded Mode (no host or port), eg.<br>jdbc:hive2:///;initFile=&lt;file&gt;<br>3.For HTTP Mode, eg.<br>jdbc:hive2://&lt;host&gt;:&lt;port&gt;/;<br>transportMode=http;httpPath=&lt;httpPath&gt;<br>4.For SSL Mode, eg.<br>jdbc:hive2://&lt;host&gt;:&lt;port&gt;/;ssl=true;<br>sslTrustStore=tStore;trustStorePassword=pw<br>5.For ZooKeeper Mode, eg.<br>jdbc:hive2://&lt;host&gt;/;serviceDiscoveryMode=<br>zooKeeper;zooKeeperNamespace=hiveserver2<br>6.For Kerberos Mode, eg.<br>jdbc:hive2://&lt;host&gt;:&lt;port&gt;/;<br>principal=hive/domain@EXAMPLE.COM<br>",
+				hdfsNameNodeUrl		   :"1.For one Namenode Url, eg.<br>hdfs://&lt;host&gt;:&lt;port&gt;<br>2.For HA Namenode Urls(use , delimiter), eg.<br>hdfs://&lt;host&gt;:&lt;port&gt;,hdfs://&lt;host2&gt;:&lt;port2&gt;<br>"
 			}
 			
 

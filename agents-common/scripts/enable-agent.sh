@@ -38,7 +38,6 @@ function getInstallProperty() {
 # Base env variable for Ranger related files/directories
 #
 PROJ_NAME=ranger
-BASE_CONF_DIR=/etc/${PROJ_NAME}
 
 #
 # The script should be run by "root" user
@@ -207,11 +206,13 @@ elif [ "${HCOMPONENT_NAME}" = "atlas" ]; then
 elif [ "${HCOMPONENT_NAME}" = "hadoop" ] ||
      [ "${HCOMPONENT_NAME}" = "yarn" ]; then
     HCOMPONENT_LIB_DIR=${HCOMPONENT_INSTALL_DIR}/share/hadoop/hdfs/lib
+elif [ "${HCOMPONENT_NAME}" = "sqoop" ]; then
+    HCOMPONENT_LIB_DIR=${HCOMPONENT_INSTALL_DIR}/server/lib
 fi
 
 HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/conf
 if [ "${HCOMPONENT_NAME}" = "solr" ]; then
-    HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/solr-webapp/webapp/WEB-INF/classes
+    HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/resources
     if [ ! -d $HCOMPONENT_CONF_DIR ]; then	
 	install_owner=`ls -ld | cut -f 3 -d " "`
 	echo "INFO: Creating $HCOMPONENT_CONF_DIR" 
@@ -223,6 +224,10 @@ elif [ "${HCOMPONENT_NAME}" = "kafka" ]; then
     HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/config
 elif [ "${HCOMPONENT_NAME}" = "hadoop" ]; then
     HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/etc/hadoop
+elif [ "${HCOMPONENT_NAME}" = "yarn" ]; then
+    HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/etc/hadoop
+elif [ "${HCOMPONENT_NAME}" = "sqoop" ]; then
+    HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/conf
 fi
 
 HCOMPONENT_ARCHIVE_CONF_DIR=${HCOMPONENT_CONF_DIR}/.archive
@@ -650,13 +655,41 @@ then
 	fi
 fi
 
+#Check Properties whether in File, return code 1 if not exist
+#$1 -> propertyName; $2 -> fileName
+checkPropertyInFile(){
+	validate=$(sed '/^\#/d' $2 | grep "^$1"  | tail -n 1 | cut -d "=" -f1-) # for validation
+	if test -z "$validate" ; then return 1; fi
+}
+
+#Add Properties to File
+#$1 -> propertyName; $2 -> newPropertyValue; $3 -> fileName
+addPropertyToFile(){
+	echo "$1=$2">>$3
+	validate=$(sed '/^\#/d' $3 | grep "^$1"  | tail -n 1 | cut -d "=" -f2-) # for validation
+	if test -z "$validate" ; then log "[E] Failed to add properties '$1' to $3 file!"; exit 1; fi
+	echo "Property $1 added successfully with : '$2'"
+}
+
 #Update Properties to File
-#$1 -> propertyName $2 -> newPropertyValue $3 -> fileName
+#$1 -> propertyName; $2 -> newPropertyValue; $3 -> fileName
 updatePropertyToFile(){
 	sed -i 's@^'$1'=[^ ]*$@'$1'='$2'@g' $3
 	validate=$(sed '/^\#/d' $3 | grep "^$1"  | tail -n 1 | cut -d "=" -f2-) # for validation
 	if test -z "$validate" ; then log "[E] '$1' not found in $3 file while Updating....!!"; exit 1; fi
 	echo "Property $1 updated successfully with : '$2'"
+}
+
+#Add or Update Properties to File
+#$1 -> propertyName; $2 -> newPropertyValue; $3 -> fileName
+addOrUpdatePropertyToFile(){
+	checkPropertyInFile $1 $3
+	if [ $? -eq 1 ]
+	then
+		addPropertyToFile $1 $2 $3
+	else
+		updatePropertyToFile $1 $2 $3
+	fi
 }
 
 if [ "${HCOMPONENT_NAME}" = "atlas" ]
@@ -684,6 +717,29 @@ fi
 #
 # Set notice to restart the ${HCOMPONENT_NAME}
 #
+
+if [ "${HCOMPONENT_NAME}" = "sqoop" ]
+then
+	if [ "${action}" = "enable" ]
+	then
+		authName="org.apache.ranger.authorization.sqoop.authorizer.RangerSqoopAuthorizer"
+	else
+		authName=""
+	fi
+
+	dt=`date '+%Y%m%d%H%M%S'`
+	fn=`ls ${HCOMPONENT_CONF_DIR}/sqoop.properties 2> /dev/null`
+	if [ -f "${fn}" ]
+	then
+		dn=`dirname ${fn}`
+		bn=`basename ${fn}`
+		bf=${dn}/.${bn}.${dt}
+		echo "backup of ${fn} to ${bf} ..."
+		cp ${fn} ${bf}
+		echo "Add or Update properties file: [${fn}] ... "
+		addOrUpdatePropertyToFile org.apache.sqoop.security.authorization.validator $authName ${fn}
+	fi
+fi
 
 echo "Ranger Plugin for ${HCOMPONENT_NAME} has been ${action}d. Please restart ${HCOMPONENT_NAME} to ensure that changes are effective."
 

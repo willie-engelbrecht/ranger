@@ -159,7 +159,7 @@ public class RangerAuthorizationCoprocessor extends RangerAuthorizationCoprocess
 		return isSpecialTable(Bytes.toString(tableName));
 	}
 	protected boolean isSpecialTable(String input) {
-		final String[] specialTables = new String[] { "hbase:meta", "-ROOT-", ".META."};
+		final String[] specialTables = new String[] { "hbase:meta", "-ROOT-", ".META.", "hbase:acl", "hbase:namespace"};
 		for (String specialTable : specialTables ) {
 			if (specialTable.equals(input)) {
 				return true;
@@ -806,7 +806,7 @@ public class RangerAuthorizationCoprocessor extends RangerAuthorizationCoprocess
 	}
 	@Override
 	public void preDeleteSnapshot(ObserverContext<MasterCoprocessorEnvironment> ctx, SnapshotDescription snapshot) throws IOException {
-		requirePermission("deleteSnapshot", Permission.Action.ADMIN);
+		requirePermission("deleteSnapshot", snapshot.getTableBytes().toByteArray(), Permission.Action.ADMIN);
 	}
 	@Override
 	public void preDeleteTable(ObserverContext<MasterCoprocessorEnvironment> c, TableName tableName) throws IOException {

@@ -386,10 +386,14 @@ public class XUserMgr extends XUserMgrBase {
 				&& password.equals(hiddenPasswordString)) {
 			vXPortalUser.setPassword(oldUserProfile.getPassword());
 		}
-                else if(password != null){
-                        validatePassword(vXUser);
-                        vXPortalUser.setPassword(password);
+                else if(oldUserProfile != null && oldUserProfile.getUserSource() == RangerCommonEnums.USER_EXTERNAL && password != null){
+                        vXPortalUser.setPassword(oldUserProfile.getPassword());
+                        logger.debug("User is trrying to change external user password which we are not allowing it to change");
                 }
+        else if(password != null){
+                validatePassword(vXUser);
+                vXPortalUser.setPassword(password);
+        }
 		Collection<Long> groupIdList = vXUser.getGroupIdList();
 		XXPortalUser xXPortalUser = new XXPortalUser();
 		xXPortalUser = userMgr.updateUserWithPass(vXPortalUser);
@@ -441,7 +445,13 @@ public class XUserMgr extends XUserMgrBase {
 		// There is nothing to log anything in XXUser so far.
 		vXUser = xUserService.updateResource(vXUser);
 		vXUser.setUserRoleList(roleList);
+        if (oldUserProfile.getUserSource() == RangerCommonEnums.USER_APP) {
 		vXUser.setPassword(password);
+        }
+        else if (oldUserProfile.getUserSource() == RangerCommonEnums.USER_EXTERNAL) {
+            vXUser.setPassword(oldUserProfile.getPassword());
+        }
+
 		List<XXTrxLog> trxLogList = xUserService.getTransactionLog(vXUser,
 				oldUserProfile, "update");
 		vXUser.setPassword(hiddenPasswordString);
@@ -573,6 +583,7 @@ public class XUserMgr extends XUserMgrBase {
                     .findByLoginId(vXUser.getName());
             if (xUser != null) {
 				// Add or update group user mapping only if the user already exists in x_user table.
+				logger.debug(String.format("createXGroupUserFromMap(): Create or update group %s ", vXGroup.getName()));
 				vXGroup = xGroupService.createXGroupWithOutLogin(vXGroup);
 				vxGUInfo.setXgroupInfo(vXGroup);
 				vxu.add(vXUser);
@@ -582,6 +593,8 @@ public class XUserMgr extends XUserMgrBase {
                 if (xXPortalUser.getUserSource() == RangerCommonEnums.USER_EXTERNAL) {
                     vXGroupUser = xGroupUserService
                             .createXGroupUserWithOutLogin(vXGroupUser);
+		    logger.debug(String.format("createXGroupUserFromMap(): Create or update group user mapping with groupname =  " + vXGroup.getName()
+											+ " username = %s userId = %d", xXPortalUser.getLoginId(), xUser.getId()));
                 }
                 Collection<String> reqRoleList = vXUser.getUserRoleList();
 
@@ -1362,6 +1375,7 @@ public class XUserMgr extends XUserMgrBase {
 		if(vXUser!=null && roleListNewProfile.size()>0){
 			VXPortalUser oldUserProfile = userMgr.getUserProfileByLoginId(vXUser.getName());
 			if(oldUserProfile!=null){
+				denySelfRoleChange(oldUserProfile.getLoginId());
 				updateUserRolesPermissions(oldUserProfile,roleListNewProfile);
 				portalUserRoleList = daoManager.getXXPortalUserRole().findByUserId(oldUserProfile.getId());
 				return getStringListFromUserRoleList(portalUserRoleList);
@@ -1384,6 +1398,7 @@ public class XUserMgr extends XUserMgrBase {
 		if(userName!=null && roleListNewProfile.size()>0){
 			VXPortalUser oldUserProfile = userMgr.getUserProfileByLoginId(userName);
 			if(oldUserProfile!=null){
+				denySelfRoleChange(oldUserProfile.getLoginId());
 				updateUserRolesPermissions(oldUserProfile,roleListNewProfile);
 				List<XXPortalUserRole> portalUserRoleList = daoManager.getXXPortalUserRole().findByUserId(oldUserProfile.getId());
 				return getStringListFromUserRoleList(portalUserRoleList);
@@ -2211,4 +2226,17 @@ public class XUserMgr extends XUserMgrBase {
                         throw restErrorUtil.createRESTException("serverMsg.xuserMgrValidatePassword", MessageEnums.INVALID_PASSWORD, null, "Password cannot be blank/null", null);
                 }
         }
+
+        public void denySelfRoleChange(String userName) {
+            UserSessionBase session = ContextUtil.getCurrentUserSession();
+            if (session != null && session.getXXPortalUser()!=null) {
+                if (userName.equals(session.getXXPortalUser().getLoginId())) {
+                    throw restErrorUtil.create403RESTException("Permission"
+                            + " denied. LoggedInUser="
+                            + (session != null ? session.getXXPortalUser().getId()
+                                    : "Not Logged In")
+                            + " ,isn't permitted to change its own role.");
+                }
+            }
+	}
 }

@@ -240,23 +240,25 @@ public class ServiceMgr {
 						((RangerServiceTag)ret).setTagStore(tagStore);
 					}
 				} else {
-					LOG.warn("ServiceMgr.getRangerServiceByService(" + service + "): could not find service class '" + serviceDef.getImplClass() + "'");
+					LOG.warn("ServiceMgr.getRangerServiceByService(" + service + "): could not find service class '"
+						 + serviceDef.getImplClass() + "' for the service type '" + serviceType + "'");
 				}
 			} else {
-				LOG.warn("ServiceMgr.getRangerServiceByService(" + service + "): could not find the service-type '" + serviceType + "'");
+				LOG.warn("ServiceMgr.getRangerServiceByService(" + service + "): could not find the service-def for the service type '" + serviceType + "'");
 			}
 		} else {
-			LOG.warn("ServiceMgr.getRangerServiceByService(" + service + "): could not find the service-type");
+			LOG.warn("ServiceMgr.getRangerServiceByService(" + service + "): could not find the service-type '" + serviceType + "'");
 		}
 
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("<== ServiceMgr.getRangerServiceByService(" + service + "): " + ret);
-		}		
+		}
 
 		return ret;
 	}
 
 	private static Map<String, Class<RangerBaseService>> serviceTypeClassMap = new HashMap<String, Class<RangerBaseService>>();
+	private static String RANGER_DEFAULT_SERVICE_NAME = "org.apache.ranger.plugin.service.RangerDefaultService";
 
 	@SuppressWarnings("unchecked")
 	private Class<RangerBaseService> getClassForServiceType(RangerServiceDef serviceDef) throws Exception {
@@ -281,18 +283,30 @@ public class ServiceMgr {
 						if(LOG.isDebugEnabled()) {
 							LOG.debug("ServiceMgr.getClassForServiceType(" + serviceType + "): service-class " + clsName + " not found in cache");
 						}
-
-						URL[]          pluginFiles = getPluginFilesForServiceType(serviceType);
-						URLClassLoader clsLoader   = new URLClassLoader(pluginFiles, Thread.currentThread().getContextClassLoader());
-
 						try {
-							Class<?> cls = Class.forName(clsName, true, clsLoader);
 
-							ret = (Class<RangerBaseService>)cls;
+							Class<?> cls;
+
+							if (StringUtils.isEmpty(clsName)) {
+								if (LOG.isDebugEnabled()) {
+									LOG.debug("No service-class configured for service-type:[" + serviceType + "], using RangerDefaultService");
+								}
+								clsName = RANGER_DEFAULT_SERVICE_NAME;
+
+								cls = Class.forName(clsName);
+							} else {
+								URL[] pluginFiles = getPluginFilesForServiceType(serviceType);
+
+								URLClassLoader clsLoader = new URLClassLoader(pluginFiles, Thread.currentThread().getContextClassLoader());
+
+								cls = Class.forName(clsName, true, clsLoader);
+							}
+
+							ret = (Class<RangerBaseService>) cls;
 
 							serviceTypeClassMap.put(serviceType, ret);
 
-							if(LOG.isDebugEnabled()) {
+							if (LOG.isDebugEnabled()) {
 								LOG.debug("ServiceMgr.getClassForServiceType(" + serviceType + "): service-class " + clsName + " added to cache");
 							}
 						} catch (Exception excp) {

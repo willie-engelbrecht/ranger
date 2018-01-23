@@ -105,16 +105,17 @@
         <module>ranger-solr-plugin-shim</module>
         <module>ranger-atlas-plugin-shim</module>
         <module>ranger-kms-plugin-shim</module>
-        <module>ranger-hive-utils</module>
         <module>ranger-examples</module>
         <module>ranger-tools</module>
         <module>plugin-atlas</module>
+        <module>plugin-sqoop</module>
+        <module>ranger-sqoop-plugin-shim</module>
   </modules>
     <properties>
         <maven.version.required>3.3.3</maven.version.required>
-        <java.version.required>1.7</java.version.required>
-        <javac.source.version>1.7</javac.source.version>
-        <javac.target.version>1.7</javac.target.version>
+        <java.version.required>1.8</java.version.required>
+        <javac.source.version>1.8</javac.source.version>
+        <javac.target.version>1.8</javac.target.version>
         <distMgmtStagingId>apache.staging.https</distMgmtStagingId>
         <distMgmtStagingName>Apache Release Distribution Repository</distMgmtStagingName>
         <distMgmtStagingUrl>https://repository.apache.org/service/local/staging/deploy/maven2</distMgmtStagingUrl>
@@ -124,12 +125,12 @@
         <apacheds.version>2.0.0-M22</apacheds.version>
         <asm.all.version>3.2</asm.all.version>
         <aspectj.version>1.8.2</aspectj.version>
-        <atlas.version>0.7-incubating</atlas.version>
+        <atlas.version>1.0.0-SNAPSHOT</atlas.version>
         <atlas.guava.version>14.0</atlas.guava.version>
         <atlas.gson.version>2.5</atlas.gson.version>
+        <atlas.jackson.version>2.9.2</atlas.jackson.version>
         <atlas.jettison.version>1.3.7</atlas.jettison.version>
         <atlas.commons.logging.version>1.1.3</atlas.commons.logging.version>
-        <avatica.version>1.7.1</avatica.version>
         <bouncycastle.version>1.55</bouncycastle.version>
         <c3p0.version>0.9.1.2</c3p0.version>
         <cglib.version>2.2.0-b23</cglib.version>
@@ -160,13 +161,12 @@
         <guice.version>4.0</guice.version>
         <hadoop.version>2.7.1</hadoop.version>
         <hamcrest.all.version>1.3</hamcrest.all.version>
-        <hbase.version>1.1.3</hbase.version>
-        <hive.version>2.1.0</hive.version>
+        <hbase.version>1.2.6</hbase.version>
+        <hive.version>2.3.2</hive.version>
         <htrace-core.version>3.1.0-incubating</htrace-core.version>
         <httpcomponents.httpclient.version>4.5.3</httpcomponents.httpclient.version>
         <httpcomponents.httpcore.version>4.4.6</httpcomponents.httpcore.version>
         <httpcomponents.httpmime.version>4.5.3</httpcomponents.httpmime.version>
-        <javassist.version>3.12.1.GA</javassist.version>
         <javax.persistence.version>2.1.0</javax.persistence.version>
         <javax.servlet.version>3.1.0</javax.servlet.version>
         <javax-inject.version>1</javax-inject.version>
@@ -178,13 +178,12 @@
         <jersey-spring.version>1.19.3</jersey-spring.version>
         <jettison.version>1.1</jettison.version>
         <jline.version>0.9.94</jline.version>
-        <joda-time.version>2.5</joda-time.version>
         <json4s.version>3.2.11</json4s.version>
         <jsr305.version>1.3.9</jsr305.version>
         <junit.version>4.12</junit.version>
         <kafka.version>0.10.0.0</kafka.version>
         <kerby.version>1.0.0</kerby.version>
-        <knox.gateway.version>0.6.0</knox.gateway.version>
+        <knox.gateway.version>0.13.0</knox.gateway.version>
         <libpam4j.version>1.8</libpam4j.version>
         <local.lib.dir>${project.basedir}/../lib/local</local.lib.dir>
         <log4j.version>1.2.17</log4j.version>
@@ -209,11 +208,12 @@
         <springframework.security.version>3.2.10.RELEASE</springframework.security.version>
         <springframework.test.version>3.2.10.RELEASE</springframework.test.version>
         <springframework.version>3.2.10.RELEASE</springframework.version>
-        <storm.version>1.0.2</storm.version>
-        <tomcat.embed.version>7.0.77</tomcat.embed.version>
+        <sqoop.version>1.99.7</sqoop.version>
+        <storm.version>1.1.1</storm.version>
+        <sun-jersey-bundle.version>1.19</sun-jersey-bundle.version>
+        <tomcat.embed.version>7.0.82</tomcat.embed.version>
         <velocity.version>1.7</velocity.version>
         <zookeeper.version>3.4.6</zookeeper.version>
-        <hive.thrift.version>0.9.3</hive.thrift.version>
     </properties>
     <profiles>
         <profile>
@@ -415,6 +415,7 @@
                             <descriptor>src/main/assembly/ranger-tools.xml</descriptor>
                             <descriptor>src/main/assembly/ranger-src.xml</descriptor>
                             <descriptor>src/main/assembly/plugin-atlas.xml</descriptor>
+                            <descriptor>src/main/assembly/plugin-sqoop.xml</descriptor>
                         </descriptors>
                     </configuration>
                 </plugin>
@@ -427,11 +428,6 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-antrun-plugin</artifactId>
                     <version>1.8</version>
-                </plugin>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-shade-plugin</artifactId>
-                    <version>2.4.2</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -518,7 +514,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-pmd-plugin</artifactId>
-                <version>3.5</version>
+                <version>3.7</version>
                 <executions>
                     <execution>
                         <phase>verify</phase>

@@ -101,6 +101,7 @@ import org.apache.ranger.plugin.policyengine.RangerPolicyEngineOptions;
 import org.apache.ranger.plugin.service.ResourceLookupContext;
 import org.apache.ranger.plugin.store.PList;
 import org.apache.ranger.plugin.store.EmbeddedServiceDefsUtil;
+import org.apache.ranger.plugin.store.ServiceStore;
 import org.apache.ranger.plugin.util.GrantRevokeRequest;
 import org.apache.ranger.plugin.util.RangerAccessRequestUtil;
 import org.apache.ranger.plugin.util.RangerPerfTracer;
@@ -670,7 +671,8 @@ public class ServiceREST {
 	@Path("/services/{id}")
 	@Produces({ "application/json", "application/xml" })
 	@PreAuthorize("@rangerPreAuthSecurityHandler.isAPIAccessible(\"" + RangerAPIList.UPDATE_SERVICE + "\")")
-	public RangerService updateService(RangerService service) {
+	public RangerService updateService(RangerService service,
+                                       @Context HttpServletRequest request) {
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> ServiceREST.updateService(): " + service);
 		}
@@ -693,7 +695,9 @@ public class ServiceREST {
 			XXServiceDef xxServiceDef = daoManager.getXXServiceDef().findByName(service.getType());
 			bizUtil.hasKMSPermissions("Service", xxServiceDef.getImplclassname());
 
-			ret = svcStore.updateService(service);
+			Map<String, Object> options = getOptions(request);
+
+            ret = svcStore.updateService(service, options);
 		} catch(WebApplicationException excp) {
 			throw excp;
 		} catch(Throwable excp) {
@@ -1424,7 +1428,7 @@ public class ServiceREST {
 					policy.setName(StringUtils.trim(policyName));
 				}
 
-				if(Boolean.valueOf(updateIfExists)) {
+                                if(updateIfExists != null && Boolean.valueOf(updateIfExists)) {
 					RangerPolicy existingPolicy = null;
 					try {
 						if(StringUtils.isNotEmpty(policy.getGuid())) {
@@ -2017,18 +2021,27 @@ public class ServiceREST {
 						}
 					}
 					String updateIfExists = request.getParameter(PARAM_UPDATE_IF_EXISTS);
+					String polResource = request.getParameter(SearchFilter.POL_RESOURCE);
 					if (updateIfExists == null || updateIfExists.isEmpty()) {
 						updateIfExists = "false";
 					} else if (updateIfExists.equalsIgnoreCase("true")) {
 						isOverride = false;
 					}
-					if (isOverride && updateIfExists.equalsIgnoreCase("false")){
+					if (isOverride && "false".equalsIgnoreCase(updateIfExists) && StringUtils.isEmpty(polResource)) {
 						if (LOG.isDebugEnabled()) {
 							LOG.debug("Deleting Policy from provided services in servicesMapJson file...");
 						}
+						if (CollectionUtils.isNotEmpty(sourceServices) && CollectionUtils.isNotEmpty(destinationServices)) {
+							deletePoliciesProvidedInServiceMap(sourceServices, destinationServices, null);
+						}
+					}
+
+					if ("true".equalsIgnoreCase(updateIfExists) && StringUtils.isNotEmpty(polResource)) {
+						if (LOG.isDebugEnabled()) {
+							LOG.debug("Deleting Policy from provided services in servicesMapJson file for specific resource...");
+						}
 						if (CollectionUtils.isNotEmpty(sourceServices) && CollectionUtils.isNotEmpty(destinationServices)){
-							deletePoliciesProvidedInServiceMap(sourceServices,
-									destinationServices, null);
+							deletePoliciesForResource(sourceServices, destinationServices, polResource, request, policies);
 						}
 					}
 					if (policies != null && !CollectionUtils.sizeIsEmpty(policies)){
@@ -2212,6 +2225,10 @@ public class ServiceREST {
 				}
 			}
 		}
+		if (StringUtils.isNotEmpty(request.getParameter("resourceMatch"))
+				&& "full".equalsIgnoreCase(request.getParameter("resourceMatch"))) {
+			policyLists = serviceUtil.getMatchingPoliciesForResource(request, policyLists);
+		}
 		Map<Long, RangerPolicy> orderedPolicies = new TreeMap<Long, RangerPolicy>();
 		
 		if (!CollectionUtils.isEmpty(policyLists)) {
@@ -2234,6 +2251,7 @@ public class ServiceREST {
 		int totalDeletedPilicies = 0;
 		if (CollectionUtils.isNotEmpty(sourceServices)
 				&& CollectionUtils.isNotEmpty(destinationServices)) {
+			RangerPolicyValidator validator = validatorFactory.getPolicyValidator(svcStore);
 			for (int i = 0; i < sourceServices.size(); i++) {
 				if (!destinationServices.get(i).isEmpty()) {
 					RangerPolicyList servicePolicies = null;
@@ -2243,12 +2261,17 @@ public class ServiceREST {
 						if (CollectionUtils.isNotEmpty(rangerPolicyList)) {
 							for (RangerPolicy rangerPolicy : rangerPolicyList) {
 								if (rangerPolicy != null) {
-									if (rangerPolicy.getId() != null){
-										deletePolicy(rangerPolicy.getId());
+									try {
+										validator.validate(rangerPolicy.getId(), Action.DELETE);
+										ensureAdminAccess(rangerPolicy.getService(), rangerPolicy.getResources());
+										svcStore.deletePolicy(rangerPolicy);
+										totalDeletedPilicies = totalDeletedPilicies + 1;
 										if (LOG.isDebugEnabled()) {
 											LOG.debug("Policy " + rangerPolicy.getName() + " deleted successfully." );
+											LOG.debug("TotalDeletedPilicies: " +totalDeletedPilicies);
 										}
-										totalDeletedPilicies = totalDeletedPilicies + 1;
+									} catch(Throwable excp) {
+										LOG.error("deletePolicy(" + rangerPolicy.getId() + ") failed", excp);
 									}
 								}
 							}
@@ -2259,6 +2282,59 @@ public class ServiceREST {
 		}
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("Total Deleted Policy : " + totalDeletedPilicies);
+		}
+	}
+
+	private void deletePoliciesForResource(List<String> sourceServices, List<String> destinationServices, String resource, HttpServletRequest request, List<RangerPolicy> exportPolicies) {
+		int totalDeletedPilicies = 0;
+		if (CollectionUtils.isNotEmpty(sourceServices)
+				&& CollectionUtils.isNotEmpty(destinationServices)) {
+			Set<String> exportedPolicyNames=new HashSet<String>();
+			if (CollectionUtils.isNotEmpty(exportPolicies)) {
+				for (RangerPolicy rangerPolicy : exportPolicies) {
+					if (rangerPolicy!=null) {
+						exportedPolicyNames.add(rangerPolicy.getName());
+					}
+				}
+			}
+			for (int i = 0; i < sourceServices.size(); i++) {
+				if (!destinationServices.get(i).isEmpty()) {
+					RangerPolicyList servicePolicies = null;
+					servicePolicies = getServicePoliciesByName(destinationServices.get(i), request);
+					if (servicePolicies != null) {
+						List<RangerPolicy> rangerPolicyList = servicePolicies.getPolicies();
+						if (CollectionUtils.isNotEmpty(rangerPolicyList)) {
+							for (RangerPolicy rangerPolicy : rangerPolicyList) {
+								if (rangerPolicy != null) {
+									Map<String, RangerPolicy.RangerPolicyResource> rangerPolicyResourceMap=rangerPolicy.getResources();
+									if (rangerPolicyResourceMap!=null) {
+										RangerPolicy.RangerPolicyResource rangerPolicyResource=null;
+										if (rangerPolicyResourceMap.containsKey("path")) {
+					                        rangerPolicyResource=rangerPolicyResourceMap.get("path");
+					                    } else if (rangerPolicyResourceMap.containsKey("database")) {
+					                        rangerPolicyResource=rangerPolicyResourceMap.get("database");
+					                    }
+										if (rangerPolicyResource!=null) {
+					                        if (CollectionUtils.isNotEmpty(rangerPolicyResource.getValues()) && rangerPolicyResource.getValues().size()>1) {
+					                            continue;
+					                        }
+					                    }
+									}
+									if (rangerPolicy.getId() != null) {
+										if (!exportedPolicyNames.contains(rangerPolicy.getName())) {
+											deletePolicy(rangerPolicy.getId());
+											if (LOG.isDebugEnabled()) {
+												LOG.debug("Policy " + rangerPolicy.getName() + " deleted successfully.");
+											}
+											totalDeletedPilicies = totalDeletedPilicies + 1;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -3219,4 +3295,16 @@ public class ServiceREST {
 			}
 		}
 	}
+
+	private Map<String, Object> getOptions(HttpServletRequest request) {
+	    Map<String, Object> ret = null;
+	    if (request != null) {
+	        String isForceRenameOption = request.getParameter(ServiceStore.OPTION_FORCE_RENAME);
+	        if (StringUtils.isNotBlank(isForceRenameOption)) {
+	            ret = new HashMap<String, Object>();
+	            ret.put(ServiceStore.OPTION_FORCE_RENAME, Boolean.valueOf(isForceRenameOption));
+            }
+        }
+        return ret;
+    }
 }

@@ -1576,6 +1576,7 @@ background-color: #dc6343;
 }
 .modal-diff .modal-header {
   background-color: #eff3f8;
+  border-radius: 6px 6px 0px 0px;
 }
 .no-margin {
   margin: 0;
@@ -1819,8 +1820,8 @@ margin-top: -29px;
 }
 .sameLevelDropdown{
 	margin-right: 31px;
-	margin-left: -130px;
-	width: 100px;
+	margin-left: -140px;
+	width: 110px;
 	height: 29px;
 	font-family: Tahoma;
 	font-size: 14px;
@@ -2225,4 +2226,16 @@ td.subgrid-custom-cell{
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 95%;
+}
+.control-group.error .select2-choices{
+    border-color: #b85355;
+}
+textarea:read-only{
+    cursor: default;
+}
+#policyDetail>label{
+    margin-bottom: 6px;
+}
+.label-margin{
+    margin-left: 10px;
 }

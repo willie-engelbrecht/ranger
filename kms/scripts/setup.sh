@@ -22,11 +22,6 @@
 PROPFILE=$PWD/install.properties
 propertyValue=''
 
-pidFolderName='/var/run/ranger_kms'
-if [ ! -d "${pidFolderName}" ]; then
-    mkdir -p "${pidFolderName}"
-fi
-
 if [ ! -f ${PROPFILE} ]
 then
 	echo "$PROPFILE file not found....!!";
@@ -307,8 +302,13 @@ check_java_version() {
 	version=$("$JAVA_BIN" -version 2>&1 | awk -F '"' '/version/ {print $2}')
 	major=`echo ${version} | cut -d. -f1`
 	minor=`echo ${version} | cut -d. -f2`
-	if [[ "${major}" == 1 && "${minor}" < 7 ]] ; then
-		log "[E] Java 1.7 is required, current java version is $version"
+	current_java_version="$major.$minor"
+	num_current_java_version=`echo $current_java_version|awk ' { printf("%3.2f\n", $0); } '`
+	JAVA_VERSION_REQUIRED=`echo $JAVA_VERSION_REQUIRED | awk '{gsub(/ /,"")}1'`
+	JAVA_VERSION_REQUIRED=`echo $JAVA_VERSION_REQUIRED | awk '{gsub(/'"'"'/,"")}1'`
+	num_required_java_version=`echo $JAVA_VERSION_REQUIRED|awk ' { printf("%3.2f\n", $0); } '`
+	if [ `echo "$num_current_java_version < $num_required_java_version" | bc` -eq 1 ];then
+		log "[E] The java version must be greater than or equal to $JAVA_VERSION_REQUIRED, the current java version is $version"
 		exit 1;
 	fi
 }
@@ -755,8 +755,15 @@ EOF
 		chpasswd <  ${passwdtmpfile}
 		rm -rf  ${passwdtmpfile}
 	else
-	    log "[I] User already exists, adding it to group";
-	    usermod -g ${unix_group} ${unix_user}
+	    useringroup=`id ${unix_user}`
+        useringrouparr=(${useringroup// / })
+	    if [[  ${useringrouparr[1]} =~ "(${unix_group})" ]]
+		then
+			log "[I] the ${unix_user} user already exists and belongs to group ${unix_group}"
+		else
+			log "[I] User already exists, adding it to group ${unix_group}"
+			usermod -g ${unix_group} ${unix_user}
+		fi
 	fi
 
 	log "[I] Setting up UNIX user : ${unix_user} and group: ${unix_group} DONE";
@@ -866,13 +873,21 @@ setup_install_files(){
         echo "export RANGER_KMS_LOG_DIR=${RANGER_KMS_LOG_DIR}" > ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-kms-env-logdir.sh
     	chmod a+rx ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-kms-env-logdir.sh
 
+        if [ -z "${RANGER_KMS_PID_DIR_PATH}" ]
+		then
+			RANGER_KMS_PID_DIR_PATH=/var/run/ranger_kms
+		fi
         if [ ! -d ${RANGER_KMS_PID_DIR_PATH} ]; then
-                log "[I] Creating KMS PID folder: ${RANGER_KMS_PID_DIR_PATH}"
-                mkdir -p ${RANGER_KMS_PID_DIR_PATH}
+            log "[I] Creating KMS PID folder: ${RANGER_KMS_PID_DIR_PATH}"
+            mkdir -p ${RANGER_KMS_PID_DIR_PATH}
+            if [ ! $? = "0" ];then
+                log "Make $RANGER_KMS_PID_DIR_PATH failure....!!";
+                exit 1;
+            fi
         fi
-        if [ -d ${RANGER_KMS_PID_DIR_PATH} ]; then
-                chown -R ${unix_user} ${RANGER_KMS_PID_DIR_PATH}
-        fi
+
+        chown -R ${unix_user} ${RANGER_KMS_PID_DIR_PATH}
+
         echo "export RANGER_KMS_PID_DIR_PATH=${RANGER_KMS_PID_DIR_PATH}" > ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-kms-env-piddir.sh
         echo "export KMS_USER=${unix_user}" >> ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-kms-env-piddir.sh
         chmod a+rx ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-kms-env-piddir.sh

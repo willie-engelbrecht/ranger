@@ -31,6 +31,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.google.common.collect.Sets;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
@@ -119,15 +120,19 @@ public class RangerServiceDefHelper {
 	}
 
 	public RangerServiceDefHelper(RangerServiceDef serviceDef) {
-		this(serviceDef, true);
+		this(serviceDef, true, false);
 	}
-	
+
+	public RangerServiceDefHelper(RangerServiceDef serviceDef, boolean useCache) {
+		this(serviceDef, useCache, false);
+	}
+
 	/**
 	 * Intended for use when serviceDef object is not-trusted, e.g. when service-def is being created or updated.
 	 * @param serviceDef
 	 * @param useCache
 	 */
-	public RangerServiceDefHelper(RangerServiceDef serviceDef, boolean useCache) {
+	public RangerServiceDefHelper(RangerServiceDef serviceDef, boolean useCache, boolean checkForCycles) {
 		// NOTE: we assume serviceDef, its name and update time are can never by null.
 		
 		if(LOG.isDebugEnabled()) {
@@ -149,7 +154,7 @@ public class RangerServiceDefHelper {
 			}
 		}
 		if (delegate == null) { // either not found in cache or date didn't match
-			delegate = new Delegate(serviceDef);
+			delegate = new Delegate(serviceDef, checkForCycles);
 			if (useCache) {
 				LOG.debug("RangerServiceDefHelper(): Created new delegate and put in delegate cache!");
 				_Cache.put(serviceName, delegate);
@@ -157,7 +162,11 @@ public class RangerServiceDefHelper {
 		}
 		_delegate = delegate;
 	}
-	
+
+	public void patchServiceDefWithDefaultValues() {
+		_delegate.patchServiceDefWithDefaultValues();
+	}
+
 	/**
 	 * for a resource definition as follows:
 	 *
@@ -179,12 +188,34 @@ public class RangerServiceDefHelper {
 		Set<List<RangerResourceDef>> ret = new HashSet<List<RangerResourceDef>>();
 
 		for (List<RangerResourceDef> hierarchy : getResourceHierarchies(policyType)) {
-			if (getAllResourceNames(hierarchy).containsAll(keys)) {
+			if (hierarchyHasAllResources(hierarchy, keys)) {
 				ret.add(hierarchy);
 			}
 		}
 
 		return ret;
+	}
+
+	public boolean hierarchyHasAllResources(List<RangerResourceDef> hierarchy, Collection<String> resourceNames) {
+		boolean foundAllResourceKeys = true;
+
+		for (String resourceKey : resourceNames) {
+			boolean found = false;
+
+			for (RangerResourceDef resourceDef : hierarchy) {
+				if (resourceDef.getName().equals(resourceKey)) {
+					found = true;
+					break;
+				}
+			}
+
+			if (!found) {
+				foundAllResourceKeys = false;
+				break;
+			}
+		}
+
+		return foundAllResourceKeys;
 	}
 
 	public Set<String> getMandatoryResourceNames(List<RangerResourceDef> hierarchy) {
@@ -234,14 +265,16 @@ public class RangerServiceDefHelper {
 		final Map<Integer, Set<List<RangerResourceDef>>> _hierarchies = new HashMap<>();
 		final Date _serviceDefFreshnessDate;
 		final String _serviceName;
+		final boolean _checkForCycles;
 		final boolean _valid;
 		final static Set<List<RangerResourceDef>> EMPTY_RESOURCE_HIERARCHY = Collections.unmodifiableSet(new HashSet<List<RangerResourceDef>>());
 
 
-		public Delegate(RangerServiceDef serviceDef) {
+		public Delegate(RangerServiceDef serviceDef, boolean checkForCycles) {
 			// NOTE: we assume serviceDef, its name and update time are can never by null.
 			_serviceName = serviceDef.getName();
 			_serviceDefFreshnessDate = serviceDef.getUpdateTime();
+			_checkForCycles = checkForCycles;
 
 			boolean isValid = true;
 			for(Integer policyType : RangerPolicy.POLICY_TYPES) {
@@ -249,9 +282,10 @@ public class RangerServiceDefHelper {
 				DirectedGraph graph = createGraph(resources);
 
 				if(graph != null) {
-					if (isValid(graph)) {
-						Set<List<String>> hierarchies = getHierarchies(graph);
-						_hierarchies.put(policyType, Collections.unmodifiableSet(convertHierarchies(hierarchies, getResourcesAsMap(resources))));
+					Map<String, RangerResourceDef> resourceDefMap = getResourcesAsMap(resources);
+					if (isValid(graph, resourceDefMap)) {
+						Set<List<RangerResourceDef>> hierarchies = getHierarchies(graph, resourceDefMap);
+						_hierarchies.put(policyType, Collections.unmodifiableSet(hierarchies));
 					} else {
 						isValid = false;
 						_hierarchies.put(policyType, EMPTY_RESOURCE_HIERARCHY);
@@ -267,7 +301,21 @@ public class RangerServiceDefHelper {
 				LOG.debug(message);
 			}
 		}
-		
+
+		public void patchServiceDefWithDefaultValues() {
+			for(int policyType : RangerPolicy.POLICY_TYPES) {
+				Set<List<RangerResourceDef>> resourceHierarchies = getResourceHierarchies(policyType);
+				for (List<RangerResourceDef> resourceHierarchy : resourceHierarchies) {
+					for (int index = 0; index < resourceHierarchy.size(); index++) {
+						RangerResourceDef resourceDef = resourceHierarchy.get(index);
+						if (!Boolean.TRUE.equals(resourceDef.getIsValidLeaf())) {
+							resourceDef.setIsValidLeaf(index == resourceHierarchy.size()-1);
+						}
+					}
+				}
+			}
+		}
+
 		public Set<List<RangerResourceDef>> getResourceHierarchies(Integer policyType) {
 			if(policyType == null) {
 				policyType = RangerPolicy.POLICY_TYPE_ACCESS;
@@ -357,40 +405,78 @@ public class RangerServiceDefHelper {
 		 *
 		 * @return
 		 */
-		boolean isValid(DirectedGraph graph) {
-			return !graph.getSources().isEmpty() && !graph.getSinks().isEmpty();
-		}
+        boolean isValid(DirectedGraph graph, Map<String, RangerResourceDef> resourceDefMap) {
+            boolean     ret     = true;
+            Set<String> sources = graph.getSources();
+            Set<String> sinks   = graph.getSinks();
+
+            if (CollectionUtils.isEmpty(sources) || CollectionUtils.isEmpty(sinks)) {
+                ret = false;
+            } else {
+                List<String> cycle = _checkForCycles ? graph.getACycle(sources, sinks) : null;
+                if (cycle == null) {
+                    for (String sink : sinks) {
+                        RangerResourceDef sinkResourceDef = resourceDefMap.get(sink);
+                        if (Boolean.FALSE.equals(sinkResourceDef.getIsValidLeaf())) {
+                            LOG.error("Error in path: sink node:[" + sink + "] is not leaf node");
+                            ret = false;
+                            break;
+                        }
+                    }
+                } else {
+                    LOG.error("Graph contains cycle! - " + cycle);
+                    ret = false;
+                }
+            }
+
+            return ret;
+        }
 
 		/**
 		 * Returns all valid resource hierarchies for the configured resource-defs. Behavior is undefined if it is called on and invalid graph. Use <code>isValid</code> to check validation first.
 		 *
 		 * @param graph
+		 * @param resourceMap
 		 * @return
 		 */
-		Set<List<String>> getHierarchies(DirectedGraph graph) {
-			Set<List<String>> hierarchies = new HashSet<>();
-			Set<String> sources = graph.getSources();
-			Set<String> sinks = graph.getSinks();
-			for (String source : sources) {
-				/*
-				 * A disconnected node, i.e. one that does not have any arc coming into or out of it is a hierarchy in itself!
-				 * A source by definition does not have any arcs coming into it.  So if it also doesn't have any neighbors then we know
-				 * it is a disconnected node.
-				 */
-				if (!graph.hasNeighbors(source)) {
-					List<String> path = Lists.newArrayList(source);
-					hierarchies.add(path);
-				} else {
-					for (String sink : sinks) {
-						List<String> path = graph.getAPath(source, sink, new HashSet<String>());
-						if (!path.isEmpty()) {
-							hierarchies.add(path);
-						}
-					}
-				}
-			}
-			return hierarchies;
-		}
+        Set<List<RangerResourceDef>> getHierarchies(DirectedGraph graph, Map<String, RangerResourceDef> resourceMap) {
+            Set<List<String>> hierarchies = new HashSet<>();
+            Set<String>       sources     = graph.getSources();
+            Set<String>       sinks       = graph.getSinks();
+
+            for (String source : sources) {
+                /*
+                 * A disconnected node, i.e. one that does not have any arc coming into or out of it is a hierarchy in itself!
+                 * A source by definition does not have any arcs coming into it.  So if it also doesn't have any neighbors then we know
+                 * it is a disconnected node.
+                 */
+                if (!graph.hasNeighbors(source)) {
+                    hierarchies.add(Lists.newArrayList(source));
+                } else {
+                    for (String sink : sinks) {
+                        List<String> path = graph.getAPath(source, sink, new HashSet<String>());
+
+                        if (!path.isEmpty()) {
+                            hierarchies.add(path);
+
+                            List<String> workingPath = new ArrayList<String>();
+
+                            for (int index = 0, pathSize = path.size(); index < pathSize -1; index++) {
+                                String node = path.get(index);
+
+                                workingPath.add(node);
+
+                                if (Boolean.TRUE.equals(resourceMap.get(node).getIsValidLeaf())) {
+                                    hierarchies.add(new ArrayList<String>(workingPath));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return convertHierarchies(hierarchies, resourceMap);
+        }
 		
 		Set<List<RangerResourceDef>> convertHierarchies(Set<List<String>> hierarchies, Map<String, RangerResourceDef> resourceMap) {
 			Set<List<RangerResourceDef>> result = new HashSet<List<RangerResourceDef>>(hierarchies.size());
@@ -408,7 +494,7 @@ public class RangerServiceDefHelper {
 		/**
 		 * Converts resource list to resource map for efficient querying
 		 *
-		 * @param resourceList
+		 * @param resourceList - is guaranteed to be non-null and non-empty
 		 * @return
 		 */
 		Map<String, RangerResourceDef> getResourcesAsMap(List<RangerResourceDef> resourceList) {
@@ -512,6 +598,45 @@ public class RangerServiceDefHelper {
 			return sinks;
 		}
 
+		List<String> getACycle(Set<String> sources, Set<String> sinks) {
+			List<String> ret = null;
+			Set<String> nonSourceOrSinkNodes = Sets.difference(_nodes.keySet(), Sets.union(sources, sinks));
+			for (String node : nonSourceOrSinkNodes) {
+				List<String> seenNodes = new ArrayList<>();
+				seenNodes.add(node);
+				ret = findCycle(node, seenNodes);
+				if (ret != null) {
+					break;
+				}
+			}
+			return ret;
+		}
+
+		/**
+		 * Does a depth first traversal of a graph starting from given node. Returns a sequence of nodes that form first cycle or null if no cycle is found.
+		 *
+		 * @param node Start node
+		 * @param seenNodes List of nodes seen thus far
+		 * @return list of nodes comprising first cycle in graph; null if no cycle was found
+		 */
+		List<String> findCycle(String node, List<String> seenNodes) {
+			List<String> ret = null;
+			Set<String> nbrs = _nodes.get(node);
+			for (String nbr : nbrs) {
+				boolean foundCycle = seenNodes.contains(nbr);
+				seenNodes.add(nbr);
+				if (foundCycle) {
+					ret = seenNodes;
+					break;
+				} else {
+					ret = findCycle(nbr, seenNodes);
+					if (ret != null) {
+						break;
+					}
+				}
+			}
+			return ret;
+		}
 		/**
 		 * Attempts to do a depth first traversal of a graph and returns the resulting path. Note that there could be several paths that connect node "from" to node "to".
 		 *
